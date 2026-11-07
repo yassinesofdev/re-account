@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #0a0a0b;
+  --surface: #131316;
+  --surface-hover: #1a1a1f;
+  --border: #26262c;
+  --foreground: #f4f4f5;
+  --muted: #8b8b93;
+  --accent: #6366f1;
+  --accent-hover: #4f46e5;
+  --danger: #f87171;
+  --danger-bg: #451a1a;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-hover: var(--surface-hover);
+  --color-border: var(--border);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-danger: var(--danger);
+  --color-danger-bg: var(--danger-bg);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* Theme: <html data-theme="light|dark"> is a manual choice (lib/theme.ts);
+   no attribute means "System" and follows the OS setting. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --background: #f9fafb;
+  --surface: #ffffff;
+  --surface-hover: #f3f4f6;
+  --border: #e5e7eb;
+  --foreground: #111113;
+  --muted: #6b7280;
+  --danger-bg: #fef2f2;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    color-scheme: light;
+    --background: #f9fafb;
+    --surface: #ffffff;
+    --surface-hover: #f3f4f6;
+    --border: #e5e7eb;
+    --foreground: #111113;
+    --muted: #6b7280;
+    --danger-bg: #fef2f2;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
