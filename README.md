@@ -16,7 +16,7 @@ It covers identity, organizations, per-product plans and seats, per-product memb
 
 `account-backend` and `account-frontend` are two independent applications living in this one folder — there is no shared build step between them.
 
-Postgres and Mailpit are **not** started from this folder — they're part of the root `docker-compose.yml` (`re-root/docker-compose.yml`), shared with `data-source`. Account data lives in its own `re_account` database inside that same Postgres container (`re_data` is `data-source`'s database) — created automatically on first boot via `docker/postgres-init/01-create-re-account-db.sql`.
+Postgres and Mailpit are **not** started from this folder — they're part of the root `docker-compose.yml` (`re-root/docker-compose.yml`), shared with `data-source`. Account data lives in its own `re_account` database inside that same Postgres container (`re_data` is `data-source`'s database) — created automatically on first boot via `infra/local/docker/postgres-init/01-create-re-account-db.sql`.
 
 ## Setup
 
