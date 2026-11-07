@@ -4,7 +4,7 @@ Sign-up, login, profile, orgs/members, plans, super-admin pages, and the **produ
 
 - **Stack:** Next.js 15.5 (App Router), React 19.0, TypeScript strict, Tailwind v4 (`@tailwindcss/postcss`). No data/state/form libs, no tests.
 - **Port:** 3742 · API: `NEXT_PUBLIC_API_URL` (default `http://localhost:8338/api`)
-- **Run:** `docker compose up account-frontend` from the root (or `npm run dev -- --port 3742`). Prod image: `Dockerfile` target `prod` (standalone).
+- **Run:** `docker compose up account-frontend` from `infra/local/` (or `npm run dev -- --port 3742`). Prod image: `Dockerfile` target `prod` (standalone).
 - Path alias `@/*` → `./src/*`.
 
 ## Layout

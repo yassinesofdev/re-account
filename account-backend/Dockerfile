@@ -1,6 +1,6 @@
 # account-backend — RE-Account Laravel API
 # Targets:
-#   dev  → used by the root docker-compose.yml (code is bind-mounted)
+#   dev  → used by re-root infra/local/docker-compose.yml (code is bind-mounted)
 #   prod → default target, the image pushed to ECR for EKS
 # Web server listens on 8080 inside the container (serversideup default).
 

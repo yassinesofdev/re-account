@@ -1,6 +1,6 @@
 # account-frontend — RE-Account Next.js frontend
 # Targets:
-#   dev  → used by the root docker-compose.yml (code is bind-mounted)
+#   dev  → used by re-root infra/local/docker-compose.yml (code is bind-mounted)
 #   prod → default target, the image pushed to ECR for EKS
 # NEXT_PUBLIC_* values are baked in at build time, so pass them as build args.
 

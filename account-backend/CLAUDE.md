@@ -3,7 +3,7 @@
 The central identity service: users, organizations, members and invites, products, plans and subscriptions, and the **product sign-in handoff** (JWT). The UI is `../account-frontend`; the first product is `re` (slug `re-intel`). `../README.md` describes the service (including its Billing section). **The code is the source of truth.**
 
 - **Stack:** Laravel 13 (PHP 8.3+, image `serversideup/php:8.4-fpm-nginx`), Sanctum 4, `firebase/php-jwt`, `stripe/stripe-php` (no Cashier). DB is Postgres `re_account` (same container as data-source). Mail goes through Mailpit.
-- **Port:** 8338 on the host → 8080 in the container. **Run:** `docker compose up account-backend` from the root.
+- **Port:** 8338 on the host → 8080 in the container. **Run:** `docker compose up account-backend` from `infra/local/`.
 - **Commands:** `docker compose exec account-backend php artisan migrate` · `… db:seed` · `… composer test` (SQLite `:memory:`; Postgres-only migration SQL is guarded by `DB::getDriverName() === 'pgsql'`, keep doing that) · `… php artisan billing:sync-stripe-plans [--dry-run]`.
 
 ## Layout

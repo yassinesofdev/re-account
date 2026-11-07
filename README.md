@@ -16,14 +16,14 @@ It covers identity, organizations, per-product plans and seats, per-product memb
 
 `account-backend` and `account-frontend` are two independent applications living in this one folder — there is no shared build step between them.
 
-Postgres and Mailpit are **not** started from this folder — they're part of the root `docker-compose.yml` (`re-root/docker-compose.yml`), shared with `data-source`. Account data lives in its own `re_account` database inside that same Postgres container (`re_data` is `data-source`'s database) — created automatically on first boot via `infra/local/docker/postgres-init/01-create-re-account-db.sql`.
+Postgres and Mailpit are **not** started from this folder — they're part of `re-root/infra/local/docker-compose.yml`, shared with `data-source`. Account data lives in its own `re_account` database inside that same Postgres container (`re_data` is `data-source`'s database) — created automatically on first boot via `infra/local/docker/postgres-init/01-create-re-account-db.sql`.
 
 ## Setup
 
-### 1. Start Postgres + Mailpit (from the repo root, not this folder)
+### 1. Start Postgres + Mailpit (from `re-root/infra/local/`, not this folder)
 
 ```bash
-cd re-root
+cd re-root/infra/local
 docker compose up -d
 ```
 
@@ -207,7 +207,7 @@ Paid plans go through Stripe (`stripe/stripe-php`, no Cashier): hosted **Checkou
 - [x] JWT signing and verification (`App\Services\TokenService`, `firebase/php-jwt`)
 - [x] All Next.js pages listed in the spec, including the `/auth` product handoff page
 - [x] Context switcher in the top navigation (Personal / per-organization), persisted in `localStorage`
-- [x] Postgres 16 (shared with `data-source`, separate `re_account` database) and Mailpit, both in the root `docker-compose.yml`
+- [x] Postgres 16 (shared with `data-source`, separate `re_account` database) and Mailpit, both in `re-root/infra/local/docker-compose.yml`
 - [x] `DatabaseSeeder` with a super admin and a test product
 - [x] This README
 
