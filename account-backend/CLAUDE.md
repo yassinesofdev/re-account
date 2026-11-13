@@ -61,7 +61,7 @@ The central identity service: users, organizations, members and invites, product
   - Needs `SANCTUM_STATEFUL_DOMAINS=localhost:3742,…`.
 - **Product handoff** (all JWTs are HS256 with `JWT_SECRET`):
   1. The product sends the user to `FRONTEND_URL/auth?product=<slug>&redirect=<url>`.
-  2. `GET auth/handoff` checks the product is active and `redirect` starts with `products.redirect_url` (a prefix match). It returns `handoff_session` (JWT, 15 min).
+  2. `GET auth/handoff` checks the product is active and `redirect` starts with `products.redirect_url` (a prefix match). It returns `handoff_session` (JWT, 15 min). `redirect_url` is set by the seeder from `RE_INTEL_REDIRECT_URL` / `RE_DATA_REDIRECT_URL` (secrets: `RE_INTEL_PRODUCT_SECRET` / `RE_DATA_PRODUCT_SECRET`; unset = localhost + dev secrets, set = existing rows updated too) or edited in admin.
   3. Login, register or `handoff/complete` with `handoff_session` (+ optional `org_id`) returns `redirect_url` = redirect + `token=<handoff JWT>` (TTL `JWT_TTL`).
      - Register also attaches the product's free personal plan.
      - An `org_id` the user isn't a member of silently falls back to personal context.

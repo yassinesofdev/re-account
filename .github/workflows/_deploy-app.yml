@@ -1,0 +1,219 @@
+# =============================================================================
+# Reusable "deploy ONE app to AWS ECS Fargate" workflow.
+# Not run on its own: deploy.yml calls it once per app (backend / frontend).
+# The same file is copied into all three product repos (re-account,
+# re-intelligence, re-data-source); keep the copies identical.
+#
+# What it does:
+#   1. build  — builds the app's Docker image for linux/arm64 (Fargate ARM64 /
+#               Graviton) and pushes it to ECR, tagged with the git commit SHA
+#               (and `latest`, which Terraform's first task definition uses).
+#   2. deploy — copies the service's latest task definition, points every
+#               container that uses this app's image (web + sidecars such as the
+#               queue worker / scheduler) at the new SHA tag and registers it as
+#               a new revision.
+#               Backends only (migrate: true): runs `php artisan migrate --force`
+#               once, as a one-off task with that NEW revision; if it fails, the
+#               deploy stops here and the running service is left untouched.
+#               Then it points the service at the new revision and waits until
+#               the new tasks are healthy. If they never get healthy, ECS's
+#               circuit breaker rolls back to the previous revision and this
+#               job fails.
+#
+# AWS login uses GitHub OIDC (no stored AWS keys): the job asks GitHub for a
+# signed token and swaps it for the role `vars.AWS_DEPLOY_ROLE_ARN`, which only
+# trusts the main branch of our repos (infra/aws/shared/iam.tf).
+# =============================================================================
+name: Deploy one app (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      app:
+        description: "App name = ECR repo re-prod/<app> = ECS service re-prod-<app>, e.g. account-backend"
+        type: string
+        required: true
+      context:
+        description: "Folder with the app's Dockerfile, e.g. account-backend"
+        type: string
+        required: true
+      build-args:
+        description: "Docker build args, one NAME=value per line (frontends: NEXT_PUBLIC_*)"
+        type: string
+        default: ""
+      migrate:
+        description: "Run `php artisan migrate --force` before switching the service (Laravel backends)"
+        type: boolean
+        default: false
+
+env:
+  # Name prefix of every AWS resource (Terraform's local.name). Override with a
+  # repo variable only if Terraform's project/env change.
+  NAME_PREFIX: ${{ vars.NAME_PREFIX || 're-prod' }}
+
+jobs:
+  build:
+    # Native ARM64 runner: builds arm64 images at full speed.
+    # FALLBACK if ARM runners aren't available for this repo: set the repo
+    # variable BUILD_RUNNER=ubuntu-latest. The QEMU step below then switches on
+    # automatically and emulates arm64 on the x64 runner (works, ~3–5x slower).
+    runs-on: ${{ vars.BUILD_RUNNER || 'ubuntu-24.04-arm' }}
+    permissions:
+      id-token: write # needed to request the OIDC token for AWS
+      contents: read
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # Frontends bake NEXT_PUBLIC_* into the JavaScript at build time. An empty
+      # value would silently fall back to localhost, so stop here instead.
+      - name: Check build args are set
+        env:
+          BUILD_ARGS: ${{ inputs.build-args }}
+        run: |
+          missing=$(printf '%s\n' "$BUILD_ARGS" | grep -E '^[A-Z0-9_]+=\s*$' || true)
+          if [ -n "$missing" ]; then
+            echo "::error::Empty build args (set the matching GitHub repo variables): $missing"
+            exit 1
+          fi
+
+      - name: AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Log in to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Image name
+        id: meta
+        run: echo "image=${{ steps.ecr.outputs.registry }}/${NAME_PREFIX}/${{ inputs.app }}" >> "$GITHUB_OUTPUT"
+
+      # Only on x64 runners (the fallback above): teach Docker to run arm64 binaries.
+      - name: Set up QEMU (x64 fallback only)
+        if: runner.arch != 'ARM64'
+        uses: docker/setup-qemu-action@v4
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build and push (linux/arm64)
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ inputs.context }}
+          target: prod
+          platforms: linux/arm64
+          push: true
+          build-args: ${{ inputs.build-args }}
+          tags: |
+            ${{ steps.meta.outputs.image }}:${{ github.sha }}
+            ${{ steps.meta.outputs.image }}:latest
+          # Reuse unchanged layers (npm ci, composer install) from earlier runs.
+          cache-from: type=gha,scope=${{ inputs.app }}
+          cache-to: type=gha,mode=max,scope=${{ inputs.app }}
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest # has the AWS CLI and jq preinstalled
+    permissions:
+      id-token: write
+      contents: read
+    # (One-deploy-per-app-at-a-time is set by the caller, deploy.yml: a group
+    # here with the same name would deadlock.)
+    env:
+      CLUSTER: ${{ vars.ECS_CLUSTER || 're-prod' }}
+      SERVICE: ${{ vars.NAME_PREFIX || 're-prod' }}-${{ inputs.app }} # also the task definition family
+      IMAGE: ${{ needs.build.outputs.image }}
+      TAG: ${{ github.sha }}
+    steps:
+      - name: AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      # Start from the family's latest revision (Terraform's template or the
+      # previous deploy) and swap the image tag on every container that runs
+      # this app's image. The `del(...)` drops read-only fields AWS returns but
+      # won't accept when registering.
+      - name: Register new task definition revision
+        id: taskdef
+        run: |
+          aws ecs describe-task-definition --task-definition "$SERVICE" \
+            --query taskDefinition --output json > current.json
+          jq --arg repo "$IMAGE" --arg new "$IMAGE:$TAG" '
+            .containerDefinitions |= map(
+              if (.image | startswith($repo + ":") or startswith($repo + "@"))
+              then .image = $new else . end)
+            | del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
+                  .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)
+          ' current.json > task-definition.json
+          echo "Containers now:"
+          jq -r '.containerDefinitions[] | "  \(.name): \(.image)"' task-definition.json
+          if ! jq -e --arg new "$IMAGE:$TAG" 'any(.containerDefinitions[]; .image == $new)' task-definition.json > /dev/null; then
+            echo "::error::No container in $SERVICE uses $IMAGE"
+            exit 1
+          fi
+          arn=$(aws ecs register-task-definition --cli-input-json file://task-definition.json \
+            --query taskDefinition.taskDefinitionArn --output text)
+          echo "Registered $arn"
+          echo "arn=$arn" >> "$GITHUB_OUTPUT"
+
+      # One-off task = the new revision started once, outside the service, with
+      # the "app" container's command replaced by the migration. It runs in the
+      # same subnets / security group / public IP setting as the service (read
+      # from the service), so it reaches the database the same way the app does.
+      # Sidecars (worker, scheduler) are in the same task definition; their
+      # command is replaced by `true` so they exit at once and don't touch the
+      # database while it's being migrated.
+      - name: Run database migrations (one-off task)
+        if: inputs.migrate
+        env:
+          TASK_DEF: ${{ steps.taskdef.outputs.arn }}
+        run: |
+          network=$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
+            --query 'services[0].networkConfiguration' --output json)
+          overrides=$(jq -c '{containerOverrides: [.containerDefinitions[] | {name, command:
+            (if .name == "app" then ["php", "/var/www/html/artisan", "migrate", "--force"] else ["true"] end)}]}' \
+            task-definition.json)
+          task=$(aws ecs run-task --cluster "$CLUSTER" --task-definition "$TASK_DEF" \
+            --launch-type FARGATE --network-configuration "$network" --overrides "$overrides" \
+            --started-by "github-migrate" --query 'tasks[0].taskArn' --output text)
+          if [ -z "$task" ] || [ "$task" = None ]; then
+            echo "::error::Could not start the migration task"; exit 1
+          fi
+          echo "Migration task: $task (waiting for it to finish, up to ~10 min)"
+          aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$task"
+
+          # Show what `artisan migrate` printed (log stream app/app/<task-id>, see modules/fargate-service).
+          aws logs get-log-events --log-group-name "/ecs/$SERVICE" \
+            --log-stream-name "app/app/${task##*/}" --start-from-head \
+            --query 'events[].message' --output text 2>/dev/null | tr '\t' '\n' || true
+
+          result=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$task" --output json)
+          code=$(echo "$result" | jq -r '.tasks[0].containers[] | select(.name == "app") | .exitCode // "none"')
+          if [ "$code" != 0 ]; then
+            echo "::error::Migrations failed (exit code $code): $(echo "$result" | jq -r '.tasks[0].stoppedReason // ""'). The service was NOT updated."
+            exit 1
+          fi
+          echo "Migrations done"
+
+      # Point the service at the new revision, then wait. "Stable" can also mean
+      # "rolled back by the circuit breaker", so check which revision won.
+      - name: Update service and wait until healthy
+        env:
+          TASK_DEF: ${{ steps.taskdef.outputs.arn }}
+        run: |
+          aws ecs update-service --cluster "$CLUSTER" --service "$SERVICE" \
+            --task-definition "$TASK_DEF" --query 'service.serviceName' --output text
+          echo "Waiting for the new tasks to be healthy (up to ~10 min)…"
+          aws ecs wait services-stable --cluster "$CLUSTER" --services "$SERVICE"
+          primary=$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
+            --query 'services[0].deployments[?status==`PRIMARY`] | [0].[taskDefinition, rolloutState]' --output text)
+          echo "Primary deployment: $primary"
+          case "$primary" in
+            "$TASK_DEF"*COMPLETED) echo "Deployed $TASK_DEF" ;;
+            *) echo "::error::Deploy failed: ECS rolled back (see the service's Events / Logs in the console)"; exit 1 ;;
+          esac

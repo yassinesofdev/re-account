@@ -1,0 +1,82 @@
+# =============================================================================
+# Deploy RE-Account to AWS (ECS Fargate, cluster re-prod).
+#   push to main → rebuild + deploy only the app(s) whose folder changed
+#   Actions tab → "Deploy" → Run workflow → pick backend / frontend / both
+#
+# Repo variables used (Settings → Secrets and variables → Actions → Variables):
+#   AWS_DEPLOY_ROLE_ARN   arn:aws:iam::992382824221:role/re-prod-github-deploy
+#   AWS_REGION            eu-central-1
+#   NEXT_PUBLIC_API_URL   https://account-api.re-es.xyz/api   (baked into the frontend)
+#   NEXT_PUBLIC_APP_URL   https://account.re-es.xyz           (baked into the frontend)
+# Optional: BUILD_RUNNER (ubuntu-latest = x64 + QEMU fallback), NAME_PREFIX / ECS_CLUSTER (default re-prod).
+# The steps themselves are in _deploy-app.yml.
+# =============================================================================
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      app:
+        description: Which app to deploy
+        type: choice
+        options: [both, backend, frontend]
+        default: both
+
+permissions:
+  id-token: write # OIDC login to AWS (passed on to _deploy-app.yml)
+  contents: read
+
+jobs:
+  # Which folders changed in this push? (Manual runs skip this and use the input.)
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v7
+        if: github.event_name == 'push'
+      - uses: dorny/paths-filter@v4
+        id: filter
+        if: github.event_name == 'push'
+        with:
+          # A change to the deploy workflows themselves redeploys both apps.
+          filters: |
+            backend:
+              - 'account-backend/**'
+              - '.github/workflows/deploy.yml'
+              - '.github/workflows/_deploy-app.yml'
+            frontend:
+              - 'account-frontend/**'
+              - '.github/workflows/deploy.yml'
+              - '.github/workflows/_deploy-app.yml'
+
+  backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true' || inputs.app == 'both' || inputs.app == 'backend'
+    # One run per app at a time; a newer push waits for the running deploy.
+    concurrency:
+      group: deploy-account-backend
+      cancel-in-progress: false
+    uses: ./.github/workflows/_deploy-app.yml
+    with:
+      app: account-backend
+      context: account-backend
+      migrate: true # php artisan migrate --force before switching the service
+
+  frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' || inputs.app == 'both' || inputs.app == 'frontend'
+    concurrency:
+      group: deploy-account-frontend
+      cancel-in-progress: false
+    uses: ./.github/workflows/_deploy-app.yml
+    with:
+      app: account-frontend
+      context: account-frontend
+      # Public URLs the browser calls; baked into the JavaScript at build time.
+      build-args: |
+        NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }}
+        NEXT_PUBLIC_APP_URL=${{ vars.NEXT_PUBLIC_APP_URL }}

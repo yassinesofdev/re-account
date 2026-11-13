@@ -399,4 +399,41 @@ class ProductRolesTest extends TestCase
         $this->assertTrue(Hash::check('re-data-dev-secret-key-change-me', $data->secret_key));
         $this->assertSame(0, $data->plans()->count());
     }
+
+    public function test_seeder_applies_redirect_urls_and_secrets_from_env(): void
+    {
+        $this->seed(DatabaseSeeder::class); // local defaults first, then the prod values
+
+        $env = [
+            'RE_INTEL_REDIRECT_URL' => 'https://app.re-es.xyz/auth/callback',
+            'RE_INTEL_PRODUCT_SECRET' => 'intel-prod-secret',
+            'RE_DATA_REDIRECT_URL' => 'https://data.re-es.xyz/auth/callback',
+            'RE_DATA_PRODUCT_SECRET' => 'data-prod-secret',
+        ];
+
+        try {
+            foreach ($env as $k => $v) {
+                putenv("{$k}={$v}");
+                $_ENV[$k] = $_SERVER[$k] = $v;
+            }
+
+            $this->seed(DatabaseSeeder::class);
+        } finally {
+            foreach (array_keys($env) as $k) {
+                putenv($k);
+                unset($_ENV[$k], $_SERVER[$k]);
+            }
+        }
+
+        $intel = Product::where('slug', 're-intel')->sole();
+        $data = Product::where('slug', 're-data')->sole();
+
+        $this->assertSame('https://app.re-es.xyz/auth/callback', $intel->redirect_url);
+        $this->assertTrue(Hash::check('intel-prod-secret', $intel->secret_key));
+        $this->assertSame('https://data.re-es.xyz/auth/callback', $data->redirect_url);
+        $this->assertTrue(Hash::check('data-prod-secret', $data->secret_key));
+
+        $this->getJson('/api/auth/handoff?product=re-intel&redirect='.urlencode('https://app.re-es.xyz/auth/callback'))->assertOk();
+        $this->getJson('/api/auth/handoff?product=re-intel&redirect='.urlencode('http://localhost:3741/auth/callback'))->assertStatus(422);
+    }
 }

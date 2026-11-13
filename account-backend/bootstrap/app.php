@@ -28,6 +28,11 @@ return Application::configure(basePath: dirname(__DIR__))
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Behind the AWS load balancer (TLS ends there): trust X-Forwarded-* so
+        // URLs/cookies are https and the client IP is right. TRUSTED_PROXIES =
+        // '*' (default; tasks only accept traffic from the ALB) or comma-separated IPs/CIDRs.
+        $middleware->trustProxies(at: env('TRUSTED_PROXIES', '*'));
+
         $middleware->statefulApi();
 
         // Stripe's server-to-server POST is verified by its signature instead.
