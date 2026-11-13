@@ -11,6 +11,7 @@ use App\Models\OrgMemberProduct;
 use App\Models\Product;
 use App\Models\Subscription;
 use App\Models\User;
+use App\Support\OrgSubdomain;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -50,14 +51,20 @@ class OrgService
         return $org;
     }
 
+    /**
+     * A free, DNS-safe, non-reserved slug (it becomes the org's subdomain).
+     * Taken or reserved → numeric suffix ("support" → "support-1"); an empty
+     * result (e.g. a name with no Latin letters) falls back to "org".
+     */
     public function uniqueSlug(string $source): string
     {
-        $base = Str::slug($source);
+        $base = trim(substr(Str::slug($source), 0, OrgSubdomain::MAX_LENGTH), '-') ?: 'org';
         $slug = $base;
         $i = 1;
 
-        while (Organization::where('slug', $slug)->exists()) {
-            $slug = "{$base}-{$i}";
+        while (! OrgSubdomain::isAllowed($slug) || Organization::where('slug', $slug)->exists()) {
+            $suffix = "-{$i}";
+            $slug = rtrim(substr($base, 0, OrgSubdomain::MAX_LENGTH - strlen($suffix)), '-').$suffix;
             $i++;
         }
 

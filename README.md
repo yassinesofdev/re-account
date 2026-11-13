@@ -43,7 +43,7 @@ php artisan serve --port=8338
 The seeder creates:
 
 - Super admin: `admin@re-account.com` / `secret`
-- A test product: `re-intel` (redirects to `http://localhost:3741/auth/callback`, dev secret key `re-intel-dev-secret-key-change-me`), with product roles `manager` and `agent` (default `agent`)
+- A test product: `re-intel` (redirects to `http://localhost:3741/intelligence/auth/callback`, dev secret key `re-intel-dev-secret-key-change-me`), with product roles `manager` and `agent` (default `agent`)
 - `re-data` ("Data Admin", redirects to `http://localhost:3743/auth/callback`, dev secret key `re-data-dev-secret-key-change-me`): **super admins only**, no plans or seats
 
 Emails sent in development land in Mailpit's web UI at `http://localhost:8026`.

@@ -44,7 +44,7 @@ class DatabaseSeeder extends Seeder
             ['slug' => 're-intel'],
             [
                 'name' => 'RE Intel',
-                'redirect_url' => env('RE_INTEL_REDIRECT_URL', 'http://localhost:3741/auth/callback'),
+                'redirect_url' => env('RE_INTEL_REDIRECT_URL', 'http://localhost:3741/intelligence/auth/callback'),
                 'secret_key' => Hash::make(env('RE_INTEL_PRODUCT_SECRET', 're-intel-dev-secret-key-change-me')),
             ],
         );

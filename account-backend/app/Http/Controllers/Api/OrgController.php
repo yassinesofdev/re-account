@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Concerns\ResolvesOrganization;
 use App\Http\Controllers\Controller;
 use App\Policies\OrganizationPolicy;
+use App\Rules\OrgSlug;
 use App\Services\Billing\BillingService;
 use App\Services\OrgService;
 use Illuminate\Http\Request;
@@ -30,7 +31,8 @@ class OrgController extends Controller
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'slug' => ['nullable', 'string', 'max:255', 'alpha_dash', 'unique:organizations,slug'],
+            // Omitted → generated from the name (OrgService::uniqueSlug).
+            'slug' => ['nullable', 'string', new OrgSlug, 'unique:organizations,slug'],
             'logo_url' => ['nullable', 'url'],
         ]);
 
@@ -65,9 +67,15 @@ class OrgController extends Controller
             $request->merge(['website' => 'https://'.$website]);
         }
 
+        // Only a changed slug must pass the subdomain rules; a legacy slug sent back unchanged is fine.
+        $slugRules = ['sometimes', 'required', 'string', Rule::unique('organizations', 'slug')->ignore($org->id)];
+        if ($request->input('slug') !== $org->slug) {
+            $slugRules[] = new OrgSlug;
+        }
+
         $data = $request->validate([
             'name' => ['sometimes', 'required', 'string', 'max:255'],
-            'slug' => ['sometimes', 'required', 'string', 'max:255', 'alpha_dash', Rule::unique('organizations', 'slug')->ignore($org->id)],
+            'slug' => $slugRules,
             'logo_url' => ['sometimes', 'nullable', 'url', 'max:2048'],
             'website' => ['sometimes', 'nullable', 'url:http,https', 'max:255'],
             'contact_email' => ['sometimes', 'nullable', 'email', 'max:255'],

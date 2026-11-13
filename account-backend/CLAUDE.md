@@ -35,6 +35,7 @@ The central identity service: users, organizations, members and invites, product
 
 ## Data model (all IDs are UUIDs)
 - `users` has `is_super_admin`.
+- **Org slugs = future subdomains** (`<org-slug>.<domain>`): reserved names live in `config/subdomains.php` (`reserved`, grouped, expand before launch); `App\Support\OrgSubdomain` (DNS-label `PATTERN`, `isReserved`, `isAllowed`). Explicit slugs (create, or a *changed* slug on `PUT orgs/{slug}`) go through `App\Rules\OrgSlug` → 422 on `slug`; an unchanged legacy slug is not re-checked. Slugs generated from the name (`OrgService::uniqueSlug`) never fail: taken/reserved → `-1`, `-2`…, truncated to 63, empty → `org-1`. Tests: `tests/Feature/Org/OrgSlugTest.php`.
 - `organizations` (slug) ↔ `org_members` (role owner/admin/member). Settings columns (migration `2026_11_02_000001`): `website`, `contact_email`, `phone`, `address`, `city`, `orn` (RERA ORN, digits, **unique** when set), `trade_license_number`, `timezone` (default `Asia/Dubai`), `brand_color` (`#RRGGBB`, stored uppercase); Postgres-only CHECKs on `orn`/`brand_color`. Validation lives in `OrgController::update` (`website` without a scheme gets `https://`). Logos are stored on the `public` disk under `org-logos/` (same pattern as avatars).
 - `org_invites`: the token is stored as a sha256 hash, and invites expire.
 - `products`: `redirect_url`, and `secret_key` **hashed** with bcrypt (the plain value is shown once). `roles` jsonb `[{key, name, default}]` (normalised on save by `Product::normalizeRoles`: exactly one default; key `^[a-z][a-z0-9_-]*$`, distinct) and `super_admin_only` bool (migration `2026_11_02_000004`).
@@ -75,7 +76,7 @@ The central identity service: users, organizations, members and invites, product
      - Org context also returns `org: {id, name, slug, logo_url, brand_color, timezone, orn}` (`Organization::productProfile()`); `null` in personal context. Additive: the flat `org_id`/`org_name`/`org_role` stay.
 - **Seeder:**
   - Super admin `admin@re-account.com` / `secret`
-  - Product `re-intel` (redirect `http://localhost:3741/auth/callback`, dev secret `re-intel-dev-secret-key-change-me`), roles `manager`/`agent` (set only when empty)
+  - Product `re-intel` (redirect `http://localhost:3741/intelligence/auth/callback`, dev secret `re-intel-dev-secret-key-change-me`), roles `manager`/`agent` (set only when empty)
   - Product `re-data` "Data Admin" (redirect `http://localhost:3743/auth/callback`, dev secret `re-data-dev-secret-key-change-me`, `super_admin_only`, no plans)
   - Plans personal-free/pro, team-free (capped by `FREE_ORG_MAX_SEATS`), team-pro ($49/seat/quarter) and team-pro-annual (fresh installs; `firstOrCreate`, existing dev rows untouched)
 
