@@ -210,10 +210,16 @@ jobs:
             --task-definition "$TASK_DEF" --query 'service.serviceName' --output text
           echo "Waiting for the new tasks to be healthy (up to ~10 min)…"
           aws ecs wait services-stable --cluster "$CLUSTER" --services "$SERVICE"
-          primary=$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
-            --query 'services[0].deployments[?status==`PRIMARY`] | [0].[taskDefinition, rolloutState]' --output text)
-          echo "Primary deployment: $primary"
-          case "$primary" in
-            "$TASK_DEF"*COMPLETED) echo "Deployed $TASK_DEF" ;;
-            *) echo "::error::Deploy failed: ECS rolled back (see the service's Events / Logs in the console)"; exit 1 ;;
-          esac
+          # "Stable" can come a little before ECS marks the rollout COMPLETED, so
+          # poll the PRIMARY deployment until it settles (max ~5 more minutes).
+          for i in $(seq 1 30); do
+            primary=$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
+              --query 'services[0].deployments[?status==`PRIMARY`] | [0].[taskDefinition, rolloutState]' --output text)
+            echo "Primary deployment: $primary"
+            case "$primary" in
+              "$TASK_DEF"*COMPLETED) echo "Deployed $TASK_DEF"; exit 0 ;;
+              "$TASK_DEF"*IN_PROGRESS) sleep 10 ;;
+              *) echo "::error::Deploy failed: ECS rolled back (see the service's Events / Logs in the console)"; exit 1 ;;
+            esac
+          done
+          echo "::error::Rollout still IN_PROGRESS after waiting; check the service in the ECS console"; exit 1
