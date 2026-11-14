@@ -101,6 +101,7 @@ export type Product = {
   slug: string;
   description: string | null;
   redirect_url: string;
+  tenant_redirect_url?: string | null;
   is_active: boolean;
   /** Roles members can have in this product (e.g. re-intel: manager, agent). */
   roles: ProductRole[];

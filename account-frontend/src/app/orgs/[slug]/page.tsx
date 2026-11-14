@@ -5,6 +5,7 @@ import { OrgTabs } from "@/components/OrgTabs";
 import { RequireAuth } from "@/components/RouteGuard";
 import { TopNav } from "@/components/TopNav";
 import { Card } from "@/components/ui";
+import { orgHost } from "@/lib/tenant";
 import { useOrg } from "@/lib/useOrg";
 
 function OrgOverviewContent() {
@@ -32,7 +33,7 @@ function OrgOverviewContent() {
           <div>
             <h1 className="text-xl font-semibold text-foreground">{organization.name}</h1>
             <p className="text-sm text-muted">
-              {organization.member_count} member{organization.member_count === 1 ? "" : "s"} · /{organization.slug}
+              {organization.member_count} member{organization.member_count === 1 ? "" : "s"} · {orgHost(organization.slug)}
             </p>
             {myRole && <p className="mt-1 text-xs uppercase tracking-wide text-muted">Your role: {myRole}</p>}
           </div>

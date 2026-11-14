@@ -36,6 +36,14 @@ class DatabaseSeeder extends Seeder
                 'email_verified_at' => now(),
             ],
         );
+        // An explicitly given password also applies to an EXISTING admin (e.g. data
+        // copied from a dev database still has the dev password) — and keeps it a super admin.
+        if (filled(env('SEED_ADMIN_PASSWORD')) && ! $admin->wasRecentlyCreated) {
+            $admin->forceFill([
+                'password' => Hash::make($adminPassword),
+                'is_super_admin' => true,
+            ])->save();
+        }
 
         // Sign-in callback URL + product secret per environment (env vars, local
         // defaults below). Locally nothing is set, so existing rows stay as they are;
@@ -44,11 +52,21 @@ class DatabaseSeeder extends Seeder
             ['slug' => 're-intel'],
             [
                 'name' => 'RE Intel',
-                'redirect_url' => env('RE_INTEL_REDIRECT_URL', 'http://localhost:3741/intelligence/auth/callback'),
+                'redirect_url' => env('RE_INTEL_REDIRECT_URL', 'http://app.re.localsite:3741/intelligence/auth/callback'),
                 'secret_key' => Hash::make(env('RE_INTEL_PRODUCT_SECRET', 're-intel-dev-secret-key-change-me')),
             ],
         );
         $this->applyEnvOverrides($product, 'RE_INTEL_REDIRECT_URL', 'RE_INTEL_PRODUCT_SECRET');
+
+        // Tenant sub-domains (<org-slug>.<domain>/intelligence): the callback template.
+        // Env wins; otherwise only an empty column gets the local default (never in
+        // production: AWS without a domain has no tenant hosts).
+        $tenantRedirect = env('RE_INTEL_TENANT_REDIRECT_URL');
+        if (filled($tenantRedirect) || (blank($product->tenant_redirect_url) && ! app()->isProduction())) {
+            $product->forceFill([
+                'tenant_redirect_url' => filled($tenantRedirect) ? $tenantRedirect : 'http://{tenant}.re.localsite:3741/intelligence/auth/callback',
+            ])->save();
+        }
 
         // Product roles (existing dev rows: only when none are declared yet).
         if (! $product->roles) {
@@ -64,7 +82,7 @@ class DatabaseSeeder extends Seeder
             [
                 'name' => 'Data Admin',
                 'description' => 'Data-source administration (super admins only).',
-                'redirect_url' => env('RE_DATA_REDIRECT_URL', 'http://localhost:3743/auth/callback'),
+                'redirect_url' => env('RE_DATA_REDIRECT_URL', 'http://data.re.localsite:3743/auth/callback'),
                 'secret_key' => Hash::make(env('RE_DATA_PRODUCT_SECRET', 're-data-dev-secret-key-change-me')),
                 'super_admin_only' => true,
             ],
@@ -106,7 +124,7 @@ class DatabaseSeeder extends Seeder
         }
 
         $this->command->info('Seeded super admin: '.$adminEmail.(filled(env('SEED_ADMIN_PASSWORD')) ? ' (password from SEED_ADMIN_PASSWORD)' : ' / secret'));
-        $this->command->info('Seeded product "re-intel" ('.$product->redirect_url.') with '.(filled(env('RE_INTEL_PRODUCT_SECRET')) ? 'secret key from RE_INTEL_PRODUCT_SECRET' : 'dev secret key: re-intel-dev-secret-key-change-me'));
+        $this->command->info('Seeded product "re-intel" ('.$product->redirect_url.', tenants '.$product->tenant_redirect_url.') with '.(filled(env('RE_INTEL_PRODUCT_SECRET')) ? 'secret key from RE_INTEL_PRODUCT_SECRET' : 'dev secret key: re-intel-dev-secret-key-change-me'));
         $this->command->info('Seeded product "re-data" (super admins only, '.$data->redirect_url.') with '.(filled(env('RE_DATA_PRODUCT_SECRET')) ? 'secret key from RE_DATA_PRODUCT_SECRET' : 'dev secret key: re-data-dev-secret-key-change-me'));
         $this->command->info('Seeded plans for re-intel: personal-free, personal-pro, team-free (capped by FREE_ORG_MAX_SEATS), team-pro ($49/seat/quarter), team-pro-annual ($169/seat/year)');
     }

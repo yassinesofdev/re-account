@@ -4,11 +4,13 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\OrgMember;
+use App\Models\Organization;
 use App\Models\Product;
 use App\Models\User;
 use App\Services\AuthService;
 use App\Services\OrgService;
 use App\Services\TokenService;
+use App\Support\TenantRedirect;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
@@ -36,6 +38,12 @@ class AuthController extends Controller
         // A new account is never a super admin: don't create it just to refuse it.
         if ($product?->super_admin_only) {
             return $this->notSuperAdmin($product);
+        }
+
+        // A tenant-bound sign-in (org sub-domain) needs an existing member: a brand-new
+        // account can't be one yet (people join through an invite), so don't create it.
+        if ($tenant = $this->tenantFromHandoffSession($data['handoff_session'] ?? null)) {
+            return $this->notOrgMember($tenant);
         }
 
         $user = $this->auth->register($data, $product);
@@ -146,14 +154,24 @@ class AuthController extends Controller
             return response()->json(['message' => 'Unknown or inactive product.'], 404);
         }
 
+        // The product's own callback (prefix match), or a tenant host built from its
+        // tenant template with an existing org slug. A tenant redirect binds the
+        // sign-in to that org (see respondWithHandoffOrUser).
+        $tenant = null;
+
         if (! str_starts_with($data['redirect'], rtrim($product->redirect_url, '/'))) {
-            return response()->json(['message' => 'Redirect URL is not registered for this product.'], 422);
+            $tenant = TenantRedirect::organization($product->tenant_redirect_url, $data['redirect']);
+
+            if (! $tenant) {
+                return response()->json(['message' => 'Redirect URL is not registered for this product.'], 422);
+            }
         }
 
         $handoffSession = $this->tokens->issueGenericToken([
             'purpose' => 'handoff_session',
             'product' => $product->slug,
             'redirect' => $data['redirect'],
+            'tenant_org_id' => $tenant?->id,
         ]);
 
         return response()->json([
@@ -163,6 +181,9 @@ class AuthController extends Controller
                 'slug' => $product->slug,
                 'super_admin_only' => $product->super_admin_only,
             ],
+            // Set when the sign-in is bound to one organization (its sub-domain): the
+            // UI shows it and offers no Personal/org choice.
+            'tenant' => $tenant ? self::tenantProfile($tenant) : null,
         ]);
     }
 
@@ -183,6 +204,35 @@ class AuthController extends Controller
             'code' => 'not_super_admin',
             'product' => ['slug' => $product->slug, 'name' => $product->name],
         ], 403);
+    }
+
+    private function notOrgMember(Organization $org)
+    {
+        return response()->json([
+            'message' => "You're not a member of {$org->name}.",
+            'code' => 'not_org_member',
+            'organization' => self::tenantProfile($org),
+        ], 403);
+    }
+
+    /** Public branding of the org a tenant-bound sign-in is for. */
+    private static function tenantProfile(Organization $org): array
+    {
+        return [
+            'id' => $org->id,
+            'name' => $org->name,
+            'slug' => $org->slug,
+            'logo_url' => $org->logo_url,
+            'brand_color' => $org->brand_color,
+        ];
+    }
+
+    private function tenantFromHandoffSession(?string $handoffSession): ?Organization
+    {
+        $payload = $handoffSession ? $this->tokens->decode($handoffSession) : null;
+        $orgId = is_array($payload) && ($payload['purpose'] ?? null) === 'handoff_session' ? ($payload['tenant_org_id'] ?? null) : null;
+
+        return $orgId ? Organization::find($orgId) : null;
     }
 
     private function resolveProductFromHandoffSession(?string $handoffSession): ?Product
@@ -221,7 +271,21 @@ class AuthController extends Controller
 
         $membership = null;
 
-        if ($orgId) {
+        // Tenant-bound (redirect on an org's sub-domain): only that org's context,
+        // whatever org_id was posted; a non-member is refused (no personal fallback).
+        $tenantOrgId = $payload['tenant_org_id'] ?? null;
+
+        if ($tenantOrgId) {
+            $membership = OrgMember::with('organization')->where('org_id', $tenantOrgId)->where('user_id', $user->id)->first();
+
+            if (! $membership) {
+                $tenant = Organization::find($tenantOrgId);
+
+                return $tenant
+                    ? $this->notOrgMember($tenant)
+                    : response()->json(['message' => 'Invalid or expired handoff session.'], 422);
+            }
+        } elseif ($orgId) {
             $membership = OrgMember::with('organization')->where('org_id', $orgId)->where('user_id', $user->id)->first();
         }
 

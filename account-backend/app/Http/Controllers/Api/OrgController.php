@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Concerns\ResolvesOrganization;
 use App\Http\Controllers\Controller;
+use App\Models\Organization;
 use App\Policies\OrganizationPolicy;
 use App\Rules\OrgSlug;
 use App\Services\Billing\BillingService;
 use App\Services\OrgService;
+use App\Support\OrgSubdomain;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -25,6 +27,34 @@ class OrgController extends Controller
         $organizations = $request->user()->organizations()->withCount('users as member_count')->get();
 
         return response()->json(['organizations' => $organizations]);
+    }
+
+    /**
+     * Live check for the create-org "Your address" field. `reason`: invalid
+     * (not a DNS label) · reserved (config/subdomains.php) · taken · null.
+     * `suggestion` is a free slug derived from the input (null when available).
+     */
+    public function slugAvailability(Request $request)
+    {
+        $data = $request->validate([
+            'slug' => ['required', 'string', 'max:255'],
+        ]);
+
+        $slug = $data['slug'];
+
+        $reason = match (true) {
+            ! OrgSubdomain::isDnsSafe($slug) => 'invalid',
+            OrgSubdomain::isReserved($slug) => 'reserved',
+            Organization::where('slug', $slug)->exists() => 'taken',
+            default => null,
+        };
+
+        return response()->json([
+            'slug' => $slug,
+            'available' => $reason === null,
+            'reason' => $reason,
+            'suggestion' => $reason === null ? null : $this->orgs->uniqueSlug($slug),
+        ]);
     }
 
     public function store(Request $request)

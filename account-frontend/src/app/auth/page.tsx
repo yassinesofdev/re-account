@@ -7,10 +7,15 @@ import { Banner, Button, Field, Input } from "@/components/ui";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { getActiveContext, setActiveContext } from "@/lib/context-storage";
+import { orgHost } from "@/lib/tenant";
 
 /** super_admin_only: only RE-Account super admins may sign in (e.g. re-data). */
 type ProductInfo = { name: string; slug: string; super_admin_only?: boolean };
-type HandoffInfo = { handoff_session: string; product: ProductInfo };
+/** Set when the sign-in comes from an org's own address (<slug>.<domain>): bound to that org. */
+type TenantInfo = { id: string; name: string; slug: string; logo_url: string | null; brand_color: string | null };
+type HandoffInfo = { handoff_session: string; product: ProductInfo; tenant?: TenantInfo | null };
+/** Tenant-bound refusal: not_org_member, or no_product_access (member without a seat). */
+type TenantDenied = { code: "not_org_member" | "no_product_access" };
 /** 403 no_product_access: the user is in the org but not assigned to this product. */
 type NoAccess = { product: string; org: string };
 
@@ -19,6 +24,35 @@ function noAccessFrom(err: unknown, productName: string): NoAccess | null {
   const product = (err.data.product as { name?: string } | undefined)?.name ?? productName;
   const org = (err.data.organization as { name?: string } | undefined)?.name ?? "this organization";
   return { product, org };
+}
+
+function tenantDeniedFrom(err: unknown): TenantDenied | null {
+  if (!(err instanceof ApiError)) return null;
+  return err.code === "not_org_member" || err.code === "no_product_access" ? { code: err.code } : null;
+}
+
+/** The org a tenant-bound sign-in is for: logo (or initial on its brand colour) + name + address. */
+function TenantBadge({ tenant }: { tenant: TenantInfo }) {
+  return (
+    <div className="mb-4 flex items-center gap-3 rounded-lg border border-border px-3 py-2.5">
+      {tenant.logo_url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={tenant.logo_url} alt="" className="h-9 w-9 shrink-0 rounded-lg object-cover" />
+      ) : (
+        <span
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent text-sm font-semibold text-white"
+          style={tenant.brand_color ? { backgroundColor: tenant.brand_color } : undefined}
+          aria-hidden
+        >
+          {tenant.name.trim().charAt(0).toUpperCase() || "?"}
+        </span>
+      )}
+      <div className="min-w-0">
+        <p className="truncate text-sm font-semibold text-foreground">{tenant.name}</p>
+        <p className="truncate text-xs text-muted">{orgHost(tenant.slug)}</p>
+      </div>
+    </div>
+  );
 }
 
 /** 403 not_super_admin: the product (re-data) is for super admins only. */
@@ -46,6 +80,8 @@ function AuthHandoffContent() {
   const [switchingAccount, setSwitchingAccount] = useState(false);
   const [noAccess, setNoAccess] = useState<NoAccess | null>(null);
   const [notSuperAdmin, setNotSuperAdmin] = useState(false);
+  const [tenantDenied, setTenantDenied] = useState<TenantDenied | null>(null);
+  const tenant = handoff?.tenant ?? null;
 
   useEffect(() => {
     if (!product || !redirect) {
@@ -80,12 +116,15 @@ function AuthHandoffContent() {
     try {
       const { redirect_url } = await api.post<{ redirect_url: string }>("/auth/handoff/complete", {
         handoff_session: handoff.handoff_session,
-        org_id: orgId || undefined,
+        // Tenant-bound: the backend uses the tenant's org whatever is sent.
+        org_id: (handoff.tenant ? handoff.tenant.id : orgId) || undefined,
       });
       window.location.href = redirect_url;
     } catch (err) {
       const denied = noAccessFrom(err, handoff.product.name);
-      if (denied) setNoAccess(denied);
+      const tDenied = handoff.tenant ? tenantDeniedFrom(err) : null;
+      if (tDenied) setTenantDenied(tDenied);
+      else if (denied) setNoAccess(denied);
       else if (isNotSuperAdmin(err)) setNotSuperAdmin(true);
       else setError(err instanceof ApiError ? err : "Something went wrong. Please try again.");
       setSubmitting(false);
@@ -119,6 +158,7 @@ function AuthHandoffContent() {
     try {
       await api.post("/auth/logout");
       setNotSuperAdmin(false);
+      setTenantDenied(null);
       await refresh();
     } catch (err) {
       setError(err instanceof ApiError ? err : "Could not sign out. Please try again.");
@@ -138,7 +178,7 @@ function AuthHandoffContent() {
       email,
       password,
       handoff_session: handoff.handoff_session,
-      org_id: stored.type === "org" ? stored.orgId : undefined,
+      org_id: handoff.tenant ? handoff.tenant.id : stored.type === "org" ? stored.orgId : undefined,
     };
 
     try {
@@ -149,7 +189,12 @@ function AuthHandoffContent() {
       window.location.href = redirect_url;
     } catch (err) {
       const denied = noAccessFrom(err, handoff.product.name);
-      if (denied) {
+      const tDenied = handoff.tenant ? tenantDeniedFrom(err) : null;
+      if (tDenied) {
+        // Signed in now (login), but not allowed into this org's address.
+        setTenantDenied(tDenied);
+        refresh();
+      } else if (denied) {
         // Signed in now, just not into this org: offer Personal instead.
         setNoAccess(denied);
         refresh();
@@ -182,6 +227,32 @@ function AuthHandoffContent() {
   }
 
   const errorMessage = error instanceof ApiError ? error.message : error;
+
+  if (tenant && tenantDenied) {
+    return (
+      <AuthShell title={`Continue to ${handoff.product.name}`} subtitle={user ? `Signed in as ${user.email}` : undefined}>
+        <TenantBadge tenant={tenant} />
+        <div className="space-y-4">
+          <Banner variant="info">
+            {tenantDenied.code === "not_org_member" ? (
+              <>
+                You&apos;re not a member of <span className="font-semibold">{tenant.name}</span>. Ask your admin for
+                an invite, or sign in with the account you use at {tenant.name}.
+              </>
+            ) : (
+              <>
+                You don&apos;t have access to <span className="font-semibold">{handoff.product.name}</span> in{" "}
+                <span className="font-semibold">{tenant.name}</span>. Ask your admin for access.
+              </>
+            )}
+          </Banner>
+          <Button className="w-full" variant="secondary" loading={switchingAccount} onClick={switchAccount}>
+            Sign in as a different account
+          </Button>
+        </div>
+      </AuthShell>
+    );
+  }
 
   if (notSuperAdmin) {
     return (
@@ -229,10 +300,12 @@ function AuthHandoffContent() {
   if (user) {
     return (
       <AuthShell title={`Continue to ${handoff.product.name}`} subtitle={`Signed in as ${user.email}`}>
+        {tenant && <TenantBadge tenant={tenant} />}
         <div className="space-y-4">
           {errorMessage && <Banner>{errorMessage}</Banner>}
 
-          <Field label="Continue as" htmlFor="context">
+          {/* An org's own address signs in to that org only: no Personal/org choice. */}
+          {!tenant && <Field label="Continue as" htmlFor="context">
             <select
               id="context"
               className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
@@ -246,7 +319,7 @@ function AuthHandoffContent() {
                 </option>
               ))}
             </select>
-          </Field>
+          </Field>}
 
           <Button className="w-full" loading={submitting} onClick={completeForAuthenticatedUser}>
             Continue
@@ -269,8 +342,12 @@ function AuthHandoffContent() {
 
   return (
     <AuthShell title={`Sign in to access ${handoff.product.name}`}>
+      {tenant && <TenantBadge tenant={tenant} />}
       {superAdminOnly ? (
         <p className="mb-4 text-center text-xs text-muted">Super admins only.</p>
+      ) : tenant ? (
+        // Members join through an invite, so there's no Register here.
+        <p className="mb-4 text-center text-xs text-muted">Sign in with your {tenant.name} account.</p>
       ) : (
         <div className="mb-4 flex rounded-lg border border-border p-1 text-sm">
           <button

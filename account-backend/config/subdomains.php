@@ -51,7 +51,7 @@ return [
         'developer', 'developers', 'home', 'intel', 'intelligence', 'learn', 'lms',
         'manager', 'market', 'marketplace', 'org', 'orgs', 'organization',
         'organizations', 'platform', 'portal', 'reports', 'roleplay', 'search',
-        'shop', 'store', 'studio', 'workspace',
+        'shop', 'slug-availability', 'store', 'studio', 'workspace', // slug-availability: an API route name
 
         // Brand, regulators, generic
         'dld', 'dubai', 'example', 'null', 'official', 're', 're-account', 're-data',

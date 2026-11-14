@@ -19,7 +19,7 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => [env('FRONTEND_URL', 'http://localhost:3742')],
+    'allowed_origins' => [env('FRONTEND_URL', 'http://account.re.localsite:3742')],
 
     'allowed_origins_patterns' => [],
 

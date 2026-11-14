@@ -43,8 +43,8 @@ php artisan serve --port=8338
 The seeder creates:
 
 - Super admin: `admin@re-account.com` / `secret`
-- A test product: `re-intel` (redirects to `http://localhost:3741/intelligence/auth/callback`, dev secret key `re-intel-dev-secret-key-change-me`), with product roles `manager` and `agent` (default `agent`)
-- `re-data` ("Data Admin", redirects to `http://localhost:3743/auth/callback`, dev secret key `re-data-dev-secret-key-change-me`): **super admins only**, no plans or seats
+- A test product: `re-intel` (redirects to `http://app.re.localsite:3741/intelligence/auth/callback`, dev secret key `re-intel-dev-secret-key-change-me`), with product roles `manager` and `agent` (default `agent`)
+- `re-data` ("Data Admin", redirects to `http://data.re.localsite:3743/auth/callback`, dev secret key `re-data-dev-secret-key-change-me`): **super admins only**, no plans or seats
 
 Emails sent in development land in Mailpit's web UI at `http://localhost:8026`.
 
@@ -57,7 +57,7 @@ cp .env.local.example .env.local   # already pre-filled for local dev
 npm run dev -- --port 3742
 ```
 
-Visit `http://localhost:3742` — you'll land on `/login`.
+Visit `http://account.re.localsite:3742` — you'll land on `/login`.
 
 ## How other products integrate
 
@@ -66,7 +66,7 @@ A product never implements its own login form. Instead it redirects the user to 
 1. **Redirect the user to RE-Account.** From your product's frontend or backend, send the browser to:
 
    ```
-   http://localhost:3742/auth?product=<your-product-slug>&redirect=<your-callback-url>
+   http://account.re.localsite:3742/auth?product=<your-product-slug>&redirect=<your-callback-url>
    ```
 
    `product` must match a `slug` registered in RE-Account's `products` table, and `redirect` must be a URL under that product's registered `redirect_url`. RE-Account rejects the request otherwise.
@@ -78,7 +78,7 @@ A product never implements its own login form. Instead it redirects the user to 
 4. **Your backend verifies the token** by calling RE-Account directly (server-to-server, not from the browser):
 
    ```
-   POST http://localhost:8338/api/verify-token
+   POST http://account-api.re.localsite:8338/api/verify-token
    Headers: X-Product-Secret: <your product's secret key>
    Body: { "token": "<the token from the redirect>" }
    ```
@@ -150,10 +150,10 @@ People join an organization once. The org subscribes to each product separately,
 
 | Variable | Purpose |
 |---|---|
-| `APP_URL` | `http://localhost:8338` |
+| `APP_URL` | `http://account-api.re.localsite:8338` |
 | `DB_HOST` / `DB_PORT` / `DB_DATABASE` / `DB_USERNAME` / `DB_PASSWORD` | `127.0.0.1` / `5433` / `re_account` / `re_user` / `re_password` — same Postgres container as `data-source`, separate database |
-| `FRONTEND_URL` | `http://localhost:3742` — used for CORS, Sanctum's stateful domain, and building links in emails |
-| `SANCTUM_STATEFUL_DOMAINS` | `localhost:3742,127.0.0.1:3742` |
+| `FRONTEND_URL` | `http://account.re.localsite:3742` — used for CORS, Sanctum's stateful domain, and building links in emails |
+| `SANCTUM_STATEFUL_DOMAINS` | `account.re.localsite:3742,127.0.0.1:3742` |
 | `JWT_SECRET` | Random 64-char secret used to sign/verify handoff and email-verification tokens |
 | `JWT_TTL` | Handoff token lifetime in seconds (default `900` = 15 min) |
 | `MAIL_HOST` / `MAIL_PORT` | `127.0.0.1` / `1026` (Mailpit) |
@@ -165,8 +165,8 @@ People join an organization once. The org subscribes to each product separately,
 
 | Variable | Purpose |
 |---|---|
-| `NEXT_PUBLIC_API_URL` | `http://localhost:8338/api` |
-| `NEXT_PUBLIC_APP_URL` | `http://localhost:3742` |
+| `NEXT_PUBLIC_API_URL` | `http://account-api.re.localsite:8338/api` |
+| `NEXT_PUBLIC_APP_URL` | `http://account.re.localsite:3742` |
 
 ## Billing
 
@@ -194,7 +194,7 @@ Paid plans go through Stripe (`stripe/stripe-php`, no Cashier): hosted **Checkou
 
 1. Put your `sk_test_…` key in `account-backend/.env` as `STRIPE_SECRET`.
 2. `docker compose exec account-backend php artisan billing:sync-stripe-plans`
-3. `stripe listen --forward-to localhost:8338/api/stripe/webhook` (host Stripe CLI) and copy the printed `whsec_…` into `STRIPE_WEBHOOK_SECRET`. `.env` is bind-mounted, so no rebuild is needed.
+3. `stripe listen --forward-to account-api.re.localsite:8338/api/stripe/webhook` (host Stripe CLI) and copy the printed `whsec_…` into `STRIPE_WEBHOOK_SECRET`. `.env` is bind-mounted, so no rebuild is needed.
 4. Stripe Dashboard (test mode): Customer portal → enable payment methods, invoice history, cancel at period end, **disable plan switching and quantity changes** (seats and products are changed only in the app); Revenue recovery → Smart Retries, then cancel the subscription after the last retry.
 5. Test cards: `4242 4242 4242 4242` (succeeds), `4000 0025 0000 3155` (3DS), `4000 0000 0000 0341` (later charges fail → `past_due`). Use Test Clocks for renewals and end-of-period downgrades.
 

@@ -151,4 +151,28 @@ class OrgSlugTest extends TestCase
         $this->assertNotSame($long, $again);
         $this->assertLessThanOrEqual(63, strlen($again));
     }
+
+    public function test_slug_availability(): void
+    {
+        Organization::factory()->create(['slug' => 'acme']);
+
+        $this->getJson('/api/orgs/slug-availability?slug=marina-homes')->assertOk()
+            ->assertExactJson(['slug' => 'marina-homes', 'available' => true, 'reason' => null, 'suggestion' => null]);
+
+        $this->getJson('/api/orgs/slug-availability?slug=acme')->assertOk()
+            ->assertJsonPath('available', false)->assertJsonPath('reason', 'taken')->assertJsonPath('suggestion', 'acme-1');
+
+        $this->getJson('/api/orgs/slug-availability?slug=support')->assertOk()
+            ->assertJsonPath('reason', 'reserved')->assertJsonPath('suggestion', 'support-1');
+
+        $this->getJson('/api/orgs/slug-availability?slug=slug-availability')->assertOk()->assertJsonPath('reason', 'reserved');
+
+        foreach (['Acme', '-acme', 'acme-', 'ac_me', str_repeat('a', 64)] as $bad) {
+            $this->getJson('/api/orgs/slug-availability?slug='.urlencode($bad))->assertOk()
+                ->assertJsonPath('available', false)->assertJsonPath('reason', 'invalid');
+        }
+        $this->getJson('/api/orgs/slug-availability?slug=Ac_Me')->assertJsonPath('suggestion', 'ac-me');
+
+        $this->getJson('/api/orgs/slug-availability')->assertUnprocessable()->assertJsonValidationErrors(['slug']);
+    }
 }

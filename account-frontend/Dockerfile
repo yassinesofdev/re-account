@@ -18,6 +18,7 @@ CMD ["npx", "next", "dev", "--port", "3742", "--hostname", "0.0.0.0"]
 FROM deps AS build
 ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_APP_URL
+ARG NEXT_PUBLIC_TENANT_DOMAIN
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY . .
 RUN npm run build

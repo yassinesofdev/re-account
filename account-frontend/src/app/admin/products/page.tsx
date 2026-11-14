@@ -20,11 +20,13 @@ type FormState = {
   slug: string;
   description: string;
   redirect_url: string;
+  /** Org sub-domain callback template, e.g. https://{tenant}.example.com/auth/callback ("" = none). */
+  tenant_redirect_url: string;
   roles: ProductRole[];
   super_admin_only: boolean;
 };
 
-const emptyForm: FormState = { name: "", slug: "", description: "", redirect_url: "", roles: [], super_admin_only: false };
+const emptyForm: FormState = { name: "", slug: "", description: "", redirect_url: "", tenant_redirect_url: "", roles: [], super_admin_only: false };
 
 function roleKey(value: string) {
   return value
@@ -184,6 +186,19 @@ function ProductForm({
           />
         </Field>
 
+        <Field
+          label="Org address redirect URL (optional)"
+          htmlFor="p-tenant-redirect"
+          error={error?.fieldError("tenant_redirect_url")}
+        >
+          <Input
+            id="p-tenant-redirect"
+            placeholder="https://{tenant}.example.com/auth/callback"
+            value={form.tenant_redirect_url}
+            onChange={(e) => setForm((f) => ({ ...f, tenant_redirect_url: e.target.value }))}
+          />
+        </Field>
+
         <Field label="Description (optional)" htmlFor="p-description">
           <Input
             id="p-description"
@@ -238,6 +253,7 @@ export default function AdminProductsPage() {
       name: form.name,
       slug: form.slug,
       redirect_url: form.redirect_url,
+      tenant_redirect_url: form.tenant_redirect_url || null,
       description: form.description || undefined,
       roles: form.roles,
       super_admin_only: form.super_admin_only,
@@ -252,6 +268,7 @@ export default function AdminProductsPage() {
       name: form.name,
       slug: form.slug,
       redirect_url: form.redirect_url,
+      tenant_redirect_url: form.tenant_redirect_url || null,
       description: form.description || null,
       roles: form.roles,
       super_admin_only: form.super_admin_only,
@@ -320,6 +337,7 @@ export default function AdminProductsPage() {
               slug: editing.slug,
               description: editing.description ?? "",
               redirect_url: editing.redirect_url,
+              tenant_redirect_url: editing.tenant_redirect_url ?? "",
               roles: editing.roles ?? [],
               super_admin_only: editing.super_admin_only,
             }}

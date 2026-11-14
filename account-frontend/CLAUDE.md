@@ -3,7 +3,7 @@
 Sign-up, login, profile, orgs/members, plans, super-admin pages, and the **product handoff** page that products (e.g. `re`) send users to for sign-in. Talks only to `account-backend`. See `../README.md` for the whole RE-Account service.
 
 - **Stack:** Next.js 15.5 (App Router), React 19.0, TypeScript strict, Tailwind v4 (`@tailwindcss/postcss`). No data/state/form libs, no tests.
-- **Port:** 3742 · API: `NEXT_PUBLIC_API_URL` (default `http://localhost:8338/api`)
+- **Port:** 3742 · API: `NEXT_PUBLIC_API_URL` (default `http://account-api.re.localsite:8338/api`) · Org address domain: `NEXT_PUBLIC_TENANT_DOMAIN` (default `re.localsite`; prod `re-es.xyz`, GitHub variable + Docker build arg; compose sets it for dev)
 - **Run:** `docker compose up account-frontend` from `infra/local/` (or `npm run dev -- --port 3742`). Prod image: `Dockerfile` target `prod` (standalone).
 - Path alias `@/*` → `./src/*`.
 
@@ -23,6 +23,7 @@ Sign-up, login, profile, orgs/members, plans, super-admin pages, and the **produ
   - `billing.ts` — `changePlan(path, planId, {quantity, proration_date}?)`, `previewOrgChange`, `openPortal`, `formatPrice`/`formatSeatPrice`/`formatMoney`/`formatDate`, `useBillingFlag` (`?billing=success|canceled`)
   - `theme.ts` (`useThemePref`, `setThemePref`) + `theme-script.ts` (`THEME_KEY`, inline pre-paint script)
   - `useOrg.ts` (org + `myRole` + `permissions` from the backend policy), `useProducts.ts`, `routing.ts`
+  - `tenant.ts` — `TENANT_DOMAIN`, `orgHost(slug)` (`acme.re-es.xyz`), `orgUrl(slug)` (https; http for localhost), `toSlugInput`/`slugify` (lowercase DNS label, max 63), `SlugAvailability` type
 
 ## How it talks to the API (`src/lib/api.ts`)
 - Sanctum SPA cookie auth: `credentials: "include"`, `Accept: application/json`.
@@ -37,11 +38,16 @@ Sign-up, login, profile, orgs/members, plans, super-admin pages, and the **produ
 3. Super-admin-only product (`product.super_admin_only`, e.g. re-data): the Register tab is hidden; a 403 `not_super_admin` shows "{product} is only available to RE-Account super admins" with "Sign in as a different account".
 3. Org context without a product seat → 403 `no_product_access`: the page shows "You don't have access to {product} in {org}. Ask your organization admin." with **Continue personally** (re-posts `handoff/complete` without `org_id`).
 4. The backend returns `redirect_url` (product callback + `?token=` JWT, valid 15 min). The page sets `window.location.href` to it.
+5. **Tenant-bound** (`handoff.tenant` set: the product callback is on an org's address `<slug>.<domain>`): `TenantBadge` (logo or initial on its brand colour, name, `orgHost(slug)`) on every step, no Personal/org picker, no Register tab ("Sign in with your {org} account"), `org_id` = the tenant. 403 `not_org_member` → "You're not a member of {org}. Ask your admin for an invite…"; `no_product_access` → "…Ask your admin for access."; both with **Sign in as a different account** (no Continue personally).
 
 ## Org product access (`/orgs/[slug]/members`)
 - Seat pills per product from `GET /orgs/{slug}/seats` ("RE Intel 2/3"); one members table with a toggle column per org product (`PUT /orgs/{slug}/members/{userId}/products` with `{products: [{product_id, role?}]}`). When assigned and the product declares roles (`seats[].product.roles`), a **product role select** sits next to the toggle (members see the role name read-only). Turning a product on omits `role` so the backend default applies (owner/admin → manager). A full product disables off→on toggles and shows a note (owner: link to Settings to upgrade). Members see read-only ✓/—.
 - Invite form: email, role, product checkboxes (**none pre-selected**, full products disabled), plus a role select per checked product (pre-set by `defaultProductRole`, which mirrors the backend). Pending invites list their products with the role; the invite accept page shows them too.
-- `/admin/products`: the product form has a **Roles** editor (name, key, one Default radio, add/remove) and a "Super admins only" checkbox; the table shows a Roles column.
+- `/admin/products`: the product form has an optional **Org address redirect URL** (`tenant_redirect_url`, `https://{tenant}.example.com/…`), a **Roles** editor (name, key, one Default radio, add/remove) and a "Super admins only" checkbox; the table shows a Roles column.
+
+## Org address (slug = subdomain)
+- `/orgs/new`: "Your address" input rendered as `[ acme ] .<TENANT_DOMAIN>`, auto-filled from the name until edited, sanitised as typed (`toSlugInput`; trailing hyphens trimmed for the check/submit), live full-URL preview, and a debounced (350 ms) `GET /orgs/slug-availability?slug=` note: available / taken / reserved / invalid, with a one-click "Use <suggestion>". Submit is disabled while unavailable; the backend still validates (422 on `slug`).
+- Read-only: the org overview shows `orgHost(slug)`; Settings → Profile shows "Web address" (`orgUrl`). Slugs aren't editable in the UI.
 
 ## Org roles and settings
 - **Gate UI on `permissions` from `useOrg`** (`update`, `manage_invites`, `manage_members`, `manage_product_access`, `manage_billing`, `delete`, `leave`), never on the role string. The backend (`OrganizationPolicy`) is the source of truth; the UI only hides what would 403.
@@ -65,6 +71,6 @@ Sign-up, login, profile, orgs/members, plans, super-admin pages, and the **produ
 
 ## Gotchas
 - `NEXT_PUBLIC_*` values are baked in at build time and passed as Docker build args.
-- Cookies need the origin to match the backend's `SANCTUM_STATEFUL_DOMAINS` and `FRONTEND_URL`. Use `localhost`, not `127.0.0.1`.
+- Cookies need the origin to match the backend's `SANCTUM_STATEFUL_DOMAINS` and `FRONTEND_URL`. Locally use `account.re.localsite:3742` (the API on `account-api.re.localsite` sets cookies on `SESSION_DOMAIN=.re.localsite` so this page can read `XSRF-TOKEN`). `next.config.ts` `allowedDevOrigins: ["*.re.localsite"]`.
 - `NEXT_PUBLIC_APP_URL` is declared but unused.
 - `README.md` here is the create-next-app boilerplate.

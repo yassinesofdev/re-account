@@ -29,10 +29,11 @@ return [
     ],
 
     // Hosted Checkout + Customer Portal only, so no publishable key is needed.
-    // An empty secret disables billing (billing endpoints return 503).
+    // An empty secret disables billing (billing endpoints return 503). On AWS
+    // an unset secret is the SSM placeholder "CHANGE_ME", treated as empty.
     'stripe' => [
-        'secret' => env('STRIPE_SECRET'),
-        'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),
+        'secret' => env('STRIPE_SECRET') === 'CHANGE_ME' ? null : env('STRIPE_SECRET'),
+        'webhook_secret' => env('STRIPE_WEBHOOK_SECRET') === 'CHANGE_ME' ? null : env('STRIPE_WEBHOOK_SECRET'),
         'currency' => env('STRIPE_CURRENCY', 'usd'),
     ],
 

@@ -35,6 +35,15 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->statefulApi();
 
+        // No `login` web route exists: API guests get a JSON 401 (never a
+        // redirect, whatever the Accept header); anything else goes to the
+        // account-frontend login page.
+        $middleware->redirectGuestsTo(
+            fn (Request $request) => $request->is('api/*')
+                ? null
+                : rtrim((string) config('app.frontend_url'), '/').'/login',
+        );
+
         // Stripe's server-to-server POST is verified by its signature instead.
         $middleware->preventRequestForgery(except: ['api/stripe/webhook']);
 

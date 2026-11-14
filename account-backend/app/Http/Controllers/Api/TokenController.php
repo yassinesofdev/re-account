@@ -34,6 +34,9 @@ class TokenController extends Controller
         abort_if(! $product, 401, 'Unknown or inactive product.');
         abort_if(! Hash::check($secret, $product->secret_key), 401, 'Invalid product secret.');
 
+        // Single use: checked last so a bad secret can't burn someone's token.
+        abort_if(! $this->tokens->consumeHandoffToken($payload), 401, 'Token already used.');
+
         $subscribable = $payload['context'] === 'org'
             ? Organization::find($payload['org_id'] ?? null)
             : User::find($payload['user_id']);

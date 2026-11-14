@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Services\Billing\StripePlanSync;
 use App\Services\OrgService;
+use App\Support\TenantRedirect;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -32,6 +33,12 @@ class ProductAdminController extends Controller
             'roles.*.name' => ['required', 'string', 'max:100'],
             'roles.*.default' => ['sometimes', 'boolean'],
             'super_admin_only' => ['sometimes', 'boolean'],
+            // Tenant callback template, e.g. https://{tenant}.re-es.xyz/intelligence/auth/callback.
+            'tenant_redirect_url' => ['sometimes', 'nullable', 'string', 'max:255', function ($attr, $value, $fail) {
+                if ($value !== null && ! TenantRedirect::isValidTemplate($value)) {
+                    $fail('Use a URL whose host starts with {tenant}., e.g. https://{tenant}.example.com/auth/callback.');
+                }
+            }],
         ];
     }
 

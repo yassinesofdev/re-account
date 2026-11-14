@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 /**
  * @property array<int, array{key: string, name: string, default: bool}>|null $roles
  */
-#[Fillable(['name', 'slug', 'description', 'redirect_url', 'secret_key', 'is_active', 'roles', 'super_admin_only'])]
+#[Fillable(['name', 'slug', 'description', 'redirect_url', 'tenant_redirect_url', 'secret_key', 'is_active', 'roles', 'super_admin_only'])]
 #[Hidden(['secret_key'])]
 class Product extends Model
 {

@@ -14,6 +14,7 @@ import { Banner, Button, Card, Field, Input } from "@/components/ui";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { clearOrgContext } from "@/lib/context-storage";
+import { orgUrl } from "@/lib/tenant";
 import {
   changePlan,
   formatDate,
@@ -520,6 +521,9 @@ function SettingsContent() {
             <LogoField organization={organization} canEdit={canEdit} onUploaded={setOrganization} />
             <Field label="Organization name" htmlFor="name" error={error?.fieldError("name")}>
               <Input {...fieldProps("name")} required />
+            </Field>
+            <Field label="Web address" htmlFor="org_address">
+              <Input id="org_address" value={orgUrl(organization.slug)} readOnly disabled />
             </Field>
             <Field label="Website" htmlFor="website" error={error?.fieldError("website")}>
               <Input {...fieldProps("website")} type="url" inputMode="url" placeholder="https://example.ae" />

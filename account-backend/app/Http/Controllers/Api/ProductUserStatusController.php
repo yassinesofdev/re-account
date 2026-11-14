@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\OrgMember;
+use App\Models\Organization;
 use App\Models\Product;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -15,8 +16,9 @@ use Illuminate\Support\Str;
  * (e.g. re's scheduled report emails). Guarded by the product secret.
  *
  * POST /api/product/user-status  {product, user_id, org_id?}  (X-Product-Secret)
- * → {exists, active, org_member, timezone}
+ * → {exists, active, org_member, timezone, org}
  *   - org_member is null when no org_id was given.
+ *   - org = {id, slug} of org_id when the user is a member (products build tenant links), else null.
  *   - active == exists today: RE-Account has no suspended/cancelled user state yet.
  */
 class ProductUserStatusController extends Controller
@@ -38,10 +40,15 @@ class ProductUserStatusController extends Controller
         $user = Str::isUuid($data['user_id']) ? User::find($data['user_id']) : null;
 
         $orgMember = null;
+        $org = null;
         if (! empty($data['org_id'])) {
             $orgMember = $user !== null
                 && Str::isUuid($data['org_id'])
                 && OrgMember::where('org_id', $data['org_id'])->where('user_id', $user->id)->exists();
+            if ($orgMember) {
+                $found = Organization::find($data['org_id']);
+                $org = $found ? ['id' => $found->id, 'slug' => $found->slug] : null;
+            }
         }
 
         return response()->json([
@@ -49,6 +56,7 @@ class ProductUserStatusController extends Controller
             'active' => $user !== null,
             'org_member' => $orgMember,
             'timezone' => $user?->timezone,
+            'org' => $org,
         ]);
     }
 }

@@ -395,7 +395,7 @@ class ProductRolesTest extends TestCase
         $this->assertSame('agent', $intel->defaultRoleFor('member'));
         $this->assertTrue($data->super_admin_only);
         $this->assertSame('Data Admin', $data->name);
-        $this->assertSame('http://localhost:3743/auth/callback', $data->redirect_url);
+        $this->assertSame('http://data.re.localsite:3743/auth/callback', $data->redirect_url);
         $this->assertTrue(Hash::check('re-data-dev-secret-key-change-me', $data->secret_key));
         $this->assertSame(0, $data->plans()->count());
     }

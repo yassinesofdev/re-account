@@ -2,12 +2,15 @@
 
 namespace App\Services;
 
+use App\Models\OrgMember;
+use App\Models\User;
 use Firebase\JWT\ExpiredException;
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
 use Firebase\JWT\SignatureInvalidException;
-use App\Models\OrgMember;
-use App\Models\User;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use UnexpectedValueException;
 
 class TokenService
@@ -31,6 +34,8 @@ class TokenService
         $payload = [
             'iat' => $now,
             'exp' => $now + (int) config('jwt.ttl', 900),
+            // Unique id: verify-token accepts each handoff token once (consumeHandoffToken).
+            'jti' => (string) Str::uuid(),
             'purpose' => 'handoff',
             'user_id' => $user->id,
             'email' => $user->email,
@@ -39,10 +44,39 @@ class TokenService
             'context' => $membership ? 'org' : 'personal',
             'org_id' => $membership?->org_id,
             'org_name' => $membership?->organization?->name,
+            // The org's sub-domain: products move an org sign-in to <org_slug>.<domain>.
+            'org_slug' => $membership?->organization?->slug,
             'org_role' => $membership?->role,
         ];
 
         return JWT::encode($payload, $this->secret, $this->algo);
+    }
+
+    /**
+     * Mark a decoded handoff token as used. Returns false when it was already
+     * used (or carries no `jti`). Atomic across processes: the insert relies on
+     * the `jti` primary key (INSERT … ON CONFLICT DO NOTHING / INSERT OR IGNORE).
+     * Expired rows are pruned on the way in.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    public function consumeHandoffToken(array $payload): bool
+    {
+        $jti = $payload['jti'] ?? null;
+
+        if (! is_string($jti) || $jti === '' || strlen($jti) > 64) {
+            return false;
+        }
+
+        $now = now();
+
+        DB::table('consumed_handoff_tokens')->where('expires_at', '<', $now)->delete();
+
+        return DB::table('consumed_handoff_tokens')->insertOrIgnore([
+            'jti' => $jti,
+            'expires_at' => Carbon::createFromTimestamp((int) ($payload['exp'] ?? $now->timestamp)),
+            'consumed_at' => $now,
+        ]) === 1;
     }
 
     /**

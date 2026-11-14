@@ -1,4 +1,4 @@
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8338/api";
+export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://account-api.re.localsite:8338/api";
 const API_ROOT = API_URL.replace(/\/api\/?$/, "");
 
 export class ApiError extends Error {

@@ -8,6 +8,7 @@
 #   AWS_REGION            eu-central-1
 #   NEXT_PUBLIC_API_URL   https://account-api.re-es.xyz/api   (baked into the frontend)
 #   NEXT_PUBLIC_APP_URL   https://account.re-es.xyz           (baked into the frontend)
+#   NEXT_PUBLIC_TENANT_DOMAIN  re-es.xyz                     (org addresses <slug>.re-es.xyz; baked in)
 # Optional: BUILD_RUNNER (ubuntu-latest = x64 + QEMU fallback), NAME_PREFIX / ECS_CLUSTER (default re-prod).
 # The steps themselves are in _deploy-app.yml.
 # =============================================================================
@@ -80,3 +81,4 @@ jobs:
       build-args: |
         NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }}
         NEXT_PUBLIC_APP_URL=${{ vars.NEXT_PUBLIC_APP_URL }}
+        NEXT_PUBLIC_TENANT_DOMAIN=${{ vars.NEXT_PUBLIC_TENANT_DOMAIN }}

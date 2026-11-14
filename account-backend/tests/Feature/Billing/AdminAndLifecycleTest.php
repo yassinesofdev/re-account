@@ -26,6 +26,7 @@ class AdminAndLifecycleTest extends BillingTestCase
             ->assertJsonPath('plan.current_period_end', $sub->current_period_end->toJSON());
 
         $sub->forceFill(['status' => 'incomplete'])->save();
+        $token = app(TokenService::class)->issueHandoffToken($user, 're-intel'); // tokens are single-use
 
         $this->postJson('/api/verify-token', ['token' => $token], ['X-Product-Secret' => 'the-secret'])
             ->assertOk()

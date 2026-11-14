@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\OrgMemberController;
 use App\Http\Controllers\Api\OrgSubscriptionController;
 use App\Http\Controllers\Api\PlanController;
 use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\Api\ProductOrgController;
 use App\Http\Controllers\Api\ProductUserStatusController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\ProfileSubscriptionController;
@@ -35,6 +36,8 @@ Route::post('verify-token', [TokenController::class, 'verify']);
 
 // Product server-to-server (guarded by X-Product-Secret, not Sanctum).
 Route::post('product/user-status', [ProductUserStatusController::class, 'show']);
+// Tenant lookup for <org-slug>.<domain> hosts (404 for reserved names and unknown orgs).
+Route::get('product/orgs/{slug}', [ProductOrgController::class, 'show']);
 
 // Public; verified by the Stripe-Signature header (CSRF-exempt in bootstrap/app.php).
 Route::post('stripe/webhook', [StripeWebhookController::class, 'handle']);
@@ -53,6 +56,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('orgs', [OrgController::class, 'index']);
     Route::post('orgs', [OrgController::class, 'store']);
+    // Before orgs/{slug}. Typed live in the create-org form, debounced.
+    Route::get('orgs/slug-availability', [OrgController::class, 'slugAvailability'])->middleware('throttle:60,1');
     Route::get('orgs/{slug}', [OrgController::class, 'show']);
     Route::put('orgs/{slug}', [OrgController::class, 'update']);
     Route::delete('orgs/{slug}', [OrgController::class, 'destroy']);

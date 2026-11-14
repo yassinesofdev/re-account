@@ -45,7 +45,7 @@ class ProductUserStatusTest extends TestCase
 
         $this->check(['user_id' => $user->id])
             ->assertOk()
-            ->assertExactJson(['exists' => true, 'active' => true, 'org_member' => null, 'timezone' => 'Asia/Dubai']);
+            ->assertExactJson(['exists' => true, 'active' => true, 'org_member' => null, 'timezone' => 'Asia/Dubai', 'org' => null]);
     }
 
     public function test_unknown_user(): void
